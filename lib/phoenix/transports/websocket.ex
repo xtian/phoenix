@@ -63,7 +63,7 @@ defmodule Phoenix.Transports.WebSocket do
 
   ## Callbacks
 
-  import Plug.Conn, only: [fetch_query_params: 1, send_resp: 3]
+  import Plug.Conn, only: [get_req_header: 2, fetch_query_params: 1, send_resp: 3]
 
   alias Phoenix.Socket.Broadcast
   alias Phoenix.Socket.Transport
@@ -82,8 +82,16 @@ defmodule Phoenix.Transports.WebSocket do
 
     case conn do
       %{halted: false} = conn ->
-        params     = conn.params
         serializer = Keyword.fetch!(opts, :serializer)
+
+        basic_auth = conn |> get_req_header("authorization") |> decode_basic_auth()
+
+        params =
+          if basic_auth do
+            conn.params |> Map.put_new(:authorization, basic_auth)
+          else
+            conn.params
+          end
 
         case Transport.connect(endpoint, handler, transport, __MODULE__, serializer, params) do
           {:ok, socket} ->
@@ -207,4 +215,10 @@ defmodule Phoenix.Transports.WebSocket do
 
     conn
   end
+
+  defp decode_basic_auth(["Basic " <> encoded]) do
+    decoded = encoded |> Base.decode64! |> String.split(":")
+    %{username: Enum.at(decoded, 0), password: Enum.at(decoded, 1)}
+  end
+  defp decode_basic_auth(_), do: nil
 end

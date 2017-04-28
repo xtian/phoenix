@@ -80,6 +80,28 @@ defmodule Phoenix.Integration.WebSocketTest do
     end
   end
 
+  defmodule BasicAuthSocket do
+    use Phoenix.Socket
+
+    channel "room:*", RoomChannel
+
+    transport :websocket, Phoenix.Transports.WebSocket,
+      check_origin: ["//example.com"], timeout: 200
+
+    def connect(%{authorization: auth}, socket) do
+      Logger.disable(self())
+
+      if auth.username && auth.password do
+        {:ok, socket}
+      else
+        :error
+      end
+    end
+    def connect(_, _), do: :error
+
+    def id(_socket), do: nil
+  end
+
   defmodule LoggingSocket do
     use Phoenix.Socket
 
@@ -106,6 +128,7 @@ defmodule Phoenix.Integration.WebSocketTest do
 
     socket "/ws", UserSocket
     socket "/ws/admin", UserSocket
+    socket "/ws/basic-auth", BasicAuthSocket
     socket "/ws/logging", LoggingSocket
   end
 
@@ -155,6 +178,13 @@ defmodule Phoenix.Integration.WebSocketTest do
 
     WebsocketClient.send_event(sock, "room:lobby1", "new_msg", %{body: "Should ignore"})
     refute_receive %Message{event: "new_msg"}
+  end
+
+  test "basic auth" do
+    assert {:ok, _} = WebsocketClient.start_link(self(), "ws://127.0.0.1:#{@port}/ws/basic-auth/websocket",
+                                          [{"authorization", "Basic " <> Base.encode64("foo:bar")}])
+
+    assert {:error, _} = WebsocketClient.start_link(self(), "ws://127.0.0.1:#{@port}/ws/basic-auth/websocket")
   end
 
   test "logs and filter params on join and handle_in" do
